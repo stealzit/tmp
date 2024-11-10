@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forest Cover Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        .chart {
+            display: inline-block;
+            margin: 10px;
+        }
+        .axis-label {
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .legend {
+            font-size: 12px;
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h1>Interactive Dashboard: Forest Cover & Environmental Data</h1>
+
+    <!-- Dropdown filters -->
+    <div>
+        <label for="thresholdFilter">Tree Cover Threshold: </label>
+        <select id="thresholdFilter">
+            <option value="all">All</option>
+            <option value="0">0%</option>
+            <option value="10">10%</option>
+            <option value="20">20%</option>
+            <option value="30">30%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+        </select>
+
+        <label for="countryFilter">Country: </label>
+        <select id="countryFilter">
+            <option value="all">All</option>
+            <!-- Additional options will be populated dynamically -->
+        </select>
+    </div>
+
+    <div class="charts">
+        <!-- Charts will be appended dynamically here -->
+    </div>
+
+    <script>
+        // Load the data
+        d3.csv("forest.csv").then(function(data) {
+            // Parsing the data
+            data.forEach(d => {
+                d.umd_tree_cover_density_2000__threshold = +d.umd_tree_cover_density_2000__threshold;
+                d.umd_tree_cover_extent_2000__ha = +d.umd_tree_cover_extent_2000__ha;
+                d.gfw_aboveground_carbon_stocks_2000__Mg_C = +d.gfw_aboveground_carbon_stocks_2000__Mg_C;
+                d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr = +d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1;
+                // More fields can be parsed as needed
+            });
+
+            // Populate Country Filter dynamically
+            const uniqueCountries = [...new Set(data.map(d => d.country))];
+            const countryFilter = d3.select("#countryFilter");
+            uniqueCountries.forEach(country => {
+                countryFilter.append("option").text(country).attr("value", country);
+            });
+
+            // Function to filter data based on dropdowns
+            function filterData() {
+                let threshold = d3.select("#thresholdFilter").property("value");
+                let country = d3.select("#countryFilter").property("value");
+
+                let filteredData = data;
+                if (threshold !== "all") {
+                    threshold = +threshold;
+                    filteredData = filteredData.filter(d => d.umd_tree_cover_density_2000__threshold === threshold);
+                }
+                if (country !== "all") {
+                    filteredData = filteredData.filter(d => d.country === country);
+                }
+                return filteredData;
+            }
+
+            // Function to update charts when filters change
+            function updateCharts() {
+                const filteredData = filterData();
+
+                // Clear existing charts
+                d3.select(".charts").html("");
+
+                // Add basic charts
+                createBarChart(filteredData);
+                createPieChart(filteredData);
+                createHistogram(filteredData);
+                createScatterPlot(filteredData);
+
+                // Add advanced charts
+                createBoxPlot(filteredData);
+                createViolinPlot(filteredData);
+                createRegressionPlot(filteredData);
+
+                // Add more charts as needed...
+            }
+
+            // Event listeners for dropdowns
+            d3.select("#thresholdFilter").on("change", updateCharts);
+            d3.select("#countryFilter").on("change", updateCharts);
+
+            // Initial chart rendering
+            updateCharts();
+
+            // Create Basic Chart Functions
+            function createBarChart(data) {
+                const margin = {top: 20, right: 30, bottom: 40, left: 40};
+                const width = 1450 - margin.left - margin.right;
+                const height = 400 - margin.top - margin.bottom;
+
+                const svg = d3.select(".charts").append("svg")
+                    .attr("class", "chart")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                const x = d3.scaleBand()
+                    .domain(data.map(d => d.country))
+                    .range([0, width])
+                    .padding(0.1);
+
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(data, d => d.umd_tree_cover_extent_2000__ha)])
+                    .nice()
+                    .range([height, 0]);
+
+                svg.append("g")
+                    .selectAll("rect")
+                    .data(data)
+                    .enter().append("rect")
+                    .attr("x", d => x(d.country))
+                    .attr("y", d => y(d.umd_tree_cover_extent_2000__ha))
+                    .attr("width", x.bandwidth())
+                    .attr("height", d => height - y(d.umd_tree_cover_extent_2000__ha))
+                    .attr("fill", "steelblue");
+
+                svg.append("g")
+                    .attr("class", "axis")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x))
+                    .selectAll("text")
+                    .attr("transform", "rotate(-45)")
+                    .style("text-anchor", "end");
+
+                svg.append("g")
+                    .attr("class", "axis")
+                    .call(d3.axisLeft(y));
+
+                svg.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", height + margin.bottom - 5)
+                    .attr("text-anchor", "middle")
+                    .attr("class", "axis-label")
+                    .text("Country");
+
+                svg.append("text")
+                    .attr("x", -height / 2)
+                    .attr("y", -margin.left + 15)
+                    .attr("text-anchor", "middle")
+                    .attr("transform", "rotate(-90)")
+                    .attr("class", "axis-label")
+                    .text("Tree Cover Extent (2000)");
+            }
+
+            function createPieChart(data) {
+                const margin = {top: 20, right: 30, bottom: 40, left: 40};
+                const width = 550;
+                const height = 300;
+                const radius = Math.min(width, height) / 2;
+
+                const svg = d3.select(".charts").append("svg")
+                    .attr("class", "chart")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .append("g")
+                    .attr("transform", `translate(${width / 2},${height / 2})`);
+
+                const pie = d3.pie()
+                    .value(d => d.gfw_aboveground_carbon_stocks_2000__Mg_C);
+
+                const arc = d3.arc()
+                    .innerRadius(0)
+                    .outerRadius(radius);
+
+                const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+                const arcs = svg.selectAll("arc")
+                    .data(pie(data))
+                    .enter().append("g")
+                    .attr("class", "arc");
+
+                arcs.append("path")
+                    .attr("d", arc)
+                    .attr("fill", d => color(d.data.country));
+
+                svg.append("text")
+                    .attr("text-anchor", "middle")
+                    .attr("y", radius + 20)
+                    .attr("class", "axis-label")
+                    .text("Aboveground Carbon Stocks (2000)");
+
+                // Add legend
+                const legend = svg.append("g")
+                    .attr("class", "legend")
+                    .attr("transform", `translate(${width / 2 - 60}, ${-height / 2 + 10})`);
+                
+                uniqueCountries.forEach((country, i) => {
+                    legend.append("rect")
+                        .attr("x", 0)
+                        .attr("y", i * 15)
+                        .attr("width", 12)
+                        .attr("height", 12)
+                        .attr("fill", color(country));
+                    
+                    legend.append("text")
+                        .attr("x", 15)
+                        .attr("y", i * 15 + 10)
+                        .text(country);
+                });
+            }
+
+            function createHistogram(data) {
+                const margin = {top: 20, right: 30, bottom: 40, left: 40};
+                const width = 350 - margin.left - margin.right;
+                const height = 300 - margin.top - margin.bottom;
+
+                const svg = d3.select(".charts").append("svg")
+                    .attr("class", "chart")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                const x = d3.scaleLinear()
+                    .domain([0, d3.max(data, d => d.gfw_aboveground_carbon_stocks_2000__Mg_C)])
+                    .range([0, width]);
+
+                const histogram = d3.histogram()
+                    .value(d => d.gfw_aboveground_carbon_stocks_2000__Mg_C)
+                    .domain(x.domain())
+                    .thresholds(x.ticks(10));
+
+                const bins = histogram(data);
+
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(bins, d => d.length)])
+                    .range([height, 0]);
+
+                svg.selectAll("rect")
+                    .data(bins)
+                    .enter().append("rect")
+                    .attr("x", 1)
+                    .attr("transform", d => `translate(${x(d.x0)}, ${y(d.length)})`)
+                    .attr("width", d => x(d.x1) - x(d.x0) - 1)
+                    .attr("height", d => height - y(d.length))
+                    .attr("fill", "steelblue");
+
+                svg.append("g")
+                    .attr("class", "axis")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x));
+
+                svg.append("g")
+                    .attr("class", "axis")
+                    .call(d3.axisLeft(y));
+
+                svg.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", height + margin.bottom - 5)
+                    .attr("text-anchor", "middle")
+                    .attr("class", "axis-label")
+                    .text("Aboveground Carbon Stocks (Mg C)");
+
+                svg.append("text")
+                    .attr("x", -height / 2)
+                    .attr("y", -margin.left + 15)
+                    .attr("text-anchor", "middle")
+                    .attr("transform", "rotate(-90)")
+                    .attr("class", "axis-label")
+                    .text("Frequency");
+            }
+
+            function createScatterPlot(data) {
+                const margin = {top: 20, right: 30, bottom: 40, left: 40};
+                const width = 400 - margin.left - margin.right;
+                const height = 300 - margin.top - margin.bottom;
+
+                const svg = d3.select(".charts").append("svg")
+                    .attr("class", "chart")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                const x = d3.scaleLinear()
+                    .domain(d3.extent(data, d => d.gfw_aboveground_carbon_stocks_2000__Mg_C))
+                    .nice()
+                    .range([0, width]);
+
+                const y = d3.scaleLinear()
+                    .domain(d3.extent(data, d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1))
+                    .nice()
+                    .range([height, 0]);
+
+                svg.append("g")
+                    .attr("class", "axis")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x));
+
+                svg.append("g")
+                    .attr("class", "axis")
+                    .call(d3.axisLeft(y));
+
+                svg.append("g")
+                    .selectAll("circle")
+                    .data(data)
+                    .enter().append("circle")
+                    .attr("cx", d => x(d.gfw_aboveground_carbon_stocks_2000__Mg_C))
+                    .attr("cy", d => y(d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1))
+                    .attr("r", 5)
+                    .attr("fill", "steelblue");
+
+                svg.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", height + margin.bottom - 5)
+                    .attr("text-anchor", "middle")
+                    .attr("class", "axis-label")
+                    .text("Aboveground Carbon Stocks (Mg C)");
+
+                svg.append("text")
+                    .attr("x", -height / 2)
+                    .attr("y", -margin.left + 15)
+                    .attr("text-anchor", "middle")
+                    .attr("transform", "rotate(-90)")
+                    .attr("class", "axis-label")
+                    .text("Gross Emissions (Mg CO2e/yr)");
+            }
+
+            function createRegressionPlot(data) {
+    const margin = {top: 20, right: 30, bottom: 40, left: 40};
+    const width = 400 - margin.left - margin.right;
+    const height = 300 - margin.top - margin.bottom;
+
+    const svg = d3.select(".charts").append("svg")
+        .attr("class", "chart")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleLinear()
+        .domain(d3.extent(data, d => d.gfw_aboveground_carbon_stocks_2000__Mg_C))
+        .nice()
+        .range([0, width]);
+
+    const y = d3.scaleLinear()
+        .domain(d3.extent(data, d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1))
+        .nice()
+        .range([height, 0]);
+
+    svg.append("g")
+        .attr("class", "axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+
+    svg.append("g")
+        .attr("class", "axis")
+        .call(d3.axisLeft(y));
+
+    // Fit a linear regression line
+    const lr = linearRegression(data, d => d.gfw_aboveground_carbon_stocks_2000__Mg_C, d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1);
+    
+    // Plot regression line
+    svg.append("line")
+        .attr("x1", x(d3.min(data, d => d.gfw_aboveground_carbon_stocks_2000__Mg_C)))
+        .attr("y1", y(lr.intercept + lr.slope * d3.min(data, d => d.gfw_aboveground_carbon_stocks_2000__Mg_C)))
+        .attr("x2", x(d3.max(data, d => d.gfw_aboveground_carbon_stocks_2000__Mg_C)))
+        .attr("y2", y(lr.intercept + lr.slope * d3.max(data, d => d.gfw_aboveground_carbon_stocks_2000__Mg_C)))
+        .attr("stroke", "red")
+        .attr("stroke-width", 2);
+
+    svg.append("g")
+        .selectAll("circle")
+        .data(data)
+        .enter().append("circle")
+        .attr("cx", d => x(d.gfw_aboveground_carbon_stocks_2000__Mg_C))
+        .attr("cy", d => y(d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1))
+        .attr("r", 3)
+        .attr("fill", "steelblue");
+
+    svg.append("text")
+        .attr("x", width / 2)
+        .attr("y", height + margin.bottom - 5)
+        .attr("text-anchor", "middle")
+        .attr("class", "axis-label")
+        .text("Regression Plot of Emissions vs. Carbon Stocks");
+}
+
+function createViolinPlot(data) {
+    const margin = {top: 20, right: 30, bottom: 40, left: 40};
+    const width = 400 - margin.left - margin.right;
+    const height = 300 - margin.top - margin.bottom;
+
+    const svg = d3.select(".charts").append("svg")
+        .attr("class", "chart")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1)])
+        .range([height, 0]);
+
+    const x = d3.scaleBand()
+        .domain(["Emissions"])
+        .range([0, width])
+        .padding(0.2);
+
+    // Create a histogram
+    const histogram = d3.histogram()
+        .value(d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1)
+        .domain(y.domain())
+        .thresholds(y.ticks(20)); // Adjust the number of bins as necessary
+
+    const bins = histogram(data);
+
+    // Create density values for each bin
+    const density = bins.map(b => {
+        const densityValue = b.length / (d3.sum(bins, b => b.length) * (b.x1 - b.x0));
+        return {x: (b.x0 + b.x1) / 2, y: densityValue};
+    });
+
+    // Draw the area
+    svg.append("path")
+        .datum(density)
+        .attr("fill", "steelblue")
+        .attr("opacity", 0.5)
+        .attr("d", d3.area()
+            .x(d => x("Emissions") + x.bandwidth() / 2)
+            .y0(height)
+            .y1(d => y(d.y))
+        );
+
+    svg.append("g")
+        .attr("class", "axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+
+    svg.append("g")
+        .attr("class", "axis")
+        .call(d3.axisLeft(y));
+
+    svg.append("text")
+        .attr("x", width / 2)
+        .attr("y", height + margin.bottom - 5)
+        .attr("text-anchor", "middle")
+        .attr("class", "axis-label")
+        .text("Violin Plot of Forest Emissions");
+}
+
+
+function createBoxPlot(data) {
+    const margin = {top: 20, right: 30, bottom: 40, left: 40};
+    const width = 400 - margin.left - margin.right;
+    const height = 300 - margin.top - margin.bottom;
+
+    const svg = d3.select(".charts").append("svg")
+        .attr("class", "chart")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1)])
+        .range([height, 0]);
+
+    const x = d3.scaleBand()
+        .domain(["Emissions"])
+        .range([0, width])
+        .padding(0.1);
+
+    // Calculate quartiles
+    const q1 = d3.quantile(data.map(d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1).sort(d3.ascending), 0.25);
+    const median = d3.quantile(data.map(d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1).sort(d3.ascending), 0.5);
+    const q3 = d3.quantile(data.map(d => d.gfw_forest_carbon_gross_emissions__Mg_CO2e_yr-1).sort(d3.ascending), 0.75);
+    const iqr = q3 - q1;
+
+    svg.append("rect")
+        .attr("x", x("Emissions"))
+        .attr("y", y(q3))
+        .attr("height", y(q1) - y(q3))
+        .attr("width", x.bandwidth())
+        .attr("fill", "steelblue");
+
+    svg.append("line")
+        .attr("x1", x("Emissions"))
+        .attr("x2", x("Emissions") + x.bandwidth())
+        .attr("y1", y(median))
+        .attr("y2", y(median))
+        .attr("stroke", "black");
+
+    svg.append("line")
+        .attr("x1", x("Emissions"))
+        .attr("x2", x("Emissions") + x.bandwidth())
+        .attr("y1", y(q3 + 1.5 * iqr))
+        .attr("y2", y(q3 + 1.5 * iqr))
+        .attr("stroke", "red");
+
+    svg.append("line")
+        .attr("x1", x("Emissions"))
+        .attr("x2", x("Emissions") + x.bandwidth())
+        .attr("y1", y(q1 - 1.5 * iqr))
+        .attr("y2", y(q1 - 1.5 * iqr))
+        .attr("stroke", "red");
+
+    svg.append("g")
+        .attr("class", "axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+
+    svg.append("g")
+        .attr("class", "axis")
+        .call(d3.axisLeft(y));
+
+    svg.append("text")
+        .attr("x", width / 2)
+        .attr("y", height + margin.bottom - 5)
+        .attr("text-anchor", "middle")
+        .attr("class", "axis-label")
+        .text("Box Plot of Forest Emissions");
+}
+
+        });
+    </script>
+</body>
+</html>
